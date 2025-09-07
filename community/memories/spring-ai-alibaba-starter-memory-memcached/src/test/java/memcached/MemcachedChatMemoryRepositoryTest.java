@@ -13,30 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.alibaba.cloud.ai.memory.redis.ssl;
+package memcached;
 
-import com.alibaba.cloud.ai.memory.redis.RedissonRedisChatMemoryRepository;
+import com.alibaba.cloud.ai.memory.memcached.MemcachedChatMemoryRepository;
+import com.alibaba.cloud.ai.toolcalling.memcached.MemcachedAutoConfiguration;
+import com.alibaba.cloud.ai.toolcalling.memcached.MemcachedService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.*;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringBootConfiguration;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.ssl.SslAutoConfiguration;
-import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.utility.MountableFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -44,49 +41,37 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integrated test redis Memory SSL support
- *
- * @author benym
- * @since 2025/8/27 14:26
+ * Integration test using Testcontainers to automatically manage Memcached test
+ * environment
  */
-@EnableAutoConfiguration
-@Import(SslAutoConfiguration.class)
-@SpringBootTest(classes = SslRedissonRedisChatMemoryIT.TestConfiguration.class)
+@SpringBootTest(classes = MemcachedTestConfiguration.class)
 @Testcontainers
-public class SslRedissonRedisChatMemoryIT {
+class MemcachedChatMemoryRepositoryTest {
 
-	private static final int REDIS_PORT = 6379;
+	private static final int MEMCACHED_PORT = 11211;
 
-	// Define and start Redis container
+	// Define and start Memcached container
 	@Container
-	private static final GenericContainer<?> redisContainer = new GenericContainer<>(DockerImageName.parse("redis:7.0"))
-		.withExposedPorts(REDIS_PORT)
-		.withCopyToContainer(MountableFile.forClasspathResource("ssl/cert.pem"), "/usr/local/etc/redis/redis.crt")
-		.withCopyToContainer(MountableFile.forClasspathResource("ssl/key.pem"), "/usr/local/etc/redis/redis.key")
-		.withCommand("redis-server", "--tls-port", "6379", "--port", "0", "--tls-cert-file",
-				"/usr/local/etc/redis/redis.crt", "--tls-key-file", "/usr/local/etc/redis/redis.key",
-				"--tls-ca-cert-file", "/usr/local/etc/redis/redis.crt", "--tls-auth-clients", "no");
-
-	/**
-	 * Dynamically configure Redis properties
-	 */
-	@DynamicPropertySource
-	static void registerProperties(DynamicPropertyRegistry registry) {
-		registry.add("spring.ai.memory.redis.host", redisContainer::getHost);
-		registry.add("spring.ai.memory.redis.port", () -> redisContainer.getMappedPort(REDIS_PORT));
-		registry.add("spring.ai.memory.redis.ssl.enabled", () -> "true");
-		registry.add("spring.ai.memory.redis.ssl.bundle", () -> "myPemBundle");
-		registry.add("spring.ssl.bundle.pem.myPemBundle.keystore.certificate", () -> "classpath:ssl/cert.pem");
-		registry.add("spring.ssl.bundle.pem.myPemBundle.keystore.private-key", () -> "classpath:ssl/key.pem");
-		registry.add("spring.ssl.bundle.pem.myPemBundle.truststore.certificate", () -> "classpath:ssl/cert.pem");
-	}
+	private static final GenericContainer memcachedContainer = new GenericContainer(
+			DockerImageName.parse("memcached:1.6.38"))
+		.withExposedPorts(MEMCACHED_PORT);
 
 	@Autowired
 	private ChatMemoryRepository chatMemoryRepository;
 
+	/**
+	 * Dynamically configure memcached properties
+	 */
+	@DynamicPropertySource
+	static void registerProperties(DynamicPropertyRegistry registry) {
+		registry.add("spring.ai.alibaba.toolcalling.memcached.ip", memcachedContainer::getHost);
+		registry.add("spring.ai.alibaba.toolcalling.memcached.port",
+				() -> memcachedContainer.getMappedPort(MEMCACHED_PORT));
+	}
+
 	@Test
 	void correctChatMemoryRepositoryInstance() {
-		assertThat(chatMemoryRepository).isInstanceOf(RedissonRedisChatMemoryRepository.class);
+		assertThat(chatMemoryRepository).isInstanceOf(MemcachedChatMemoryRepository.class);
 	}
 
 	@ParameterizedTest
@@ -163,7 +148,6 @@ public class SslRedissonRedisChatMemoryIT {
 				new SystemMessage("Message from system - " + conversationId));
 
 		chatMemoryRepository.saveAll(conversationId, messages);
-
 		chatMemoryRepository.deleteByConversationId(conversationId);
 
 		var results = chatMemoryRepository.findByConversationId(conversationId);
@@ -181,15 +165,15 @@ public class SslRedissonRedisChatMemoryIT {
 
 		chatMemoryRepository.saveAll(conversationId, messages);
 
-		// Verify all messages have been saved
+		// 验证所有消息都已保存
 		var savedMessages = chatMemoryRepository.findByConversationId(conversationId);
 		assertThat(savedMessages.size()).isEqualTo(messages.size());
 
-		// Perform cleanup operation, set max limit to 3, delete count to 2
-		RedissonRedisChatMemoryRepository redisRepository = (RedissonRedisChatMemoryRepository) chatMemoryRepository;
-		redisRepository.clearOverLimit(conversationId, 3, 2);
+		// 执行清理操作，设置最大限制为3，删除数量为2
+		MemcachedChatMemoryRepository mongoDBChatMemoryRepository = (MemcachedChatMemoryRepository) chatMemoryRepository;
+		mongoDBChatMemoryRepository.clearOverLimit(conversationId, 3, 2);
 
-		// Verify only the last 3 messages are retained
+		// 验证只保留了后3个消息
 		savedMessages = chatMemoryRepository.findByConversationId(conversationId);
 		assertThat(savedMessages.size()).isEqualTo(3);
 		assertThat(savedMessages.get(0).getText()).isEqualTo(messages.get(2).getText());
@@ -197,21 +181,15 @@ public class SslRedissonRedisChatMemoryIT {
 		assertThat(savedMessages.get(2).getText()).isEqualTo(messages.get(4).getText());
 	}
 
-	@SpringBootConfiguration
-	static class TestConfiguration {
+}
 
-		@Bean
-		ChatMemoryRepository chatMemoryRepository(ObjectProvider<SslBundles> sslBundlesProvider) {
-			// Use Redis connection information from container to create Redis repository
-			return RedissonRedisChatMemoryRepository.builder()
-				.host(redisContainer.getHost())
-				.port(redisContainer.getMappedPort(REDIS_PORT))
-				.sslBundles(sslBundlesProvider.getIfAvailable())
-				.useSsl(true)
-				.bundle("myPemBundle")
-				.build();
-		}
+@ContextConfiguration
+@Import(MemcachedAutoConfiguration.class)
+class MemcachedTestConfiguration {
 
+	@Bean
+	ChatMemoryRepository chatMemoryRepository(MemcachedService memcachedService) {
+		return new MemcachedChatMemoryRepository(memcachedService);
 	}
 
 }
