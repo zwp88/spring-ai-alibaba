@@ -195,8 +195,16 @@ public class NodeExecutor extends BaseGraphExecutor {
 				if (element instanceof ChatResponse response) {
 					ChatResponse lastResponse = lastChatResponseRef.get();
 					if (lastResponse == null) {
-						GraphResponse<NodeOutput> lastGraphResponse = GraphResponse
-							.of(new StreamingOutput(response.getResult().getOutput().getText(), context.getCurrentNodeId(), context.getOverallState()));
+						var message = response.getResult().getOutput();
+						GraphResponse<NodeOutput> lastGraphResponse = null;
+						if (message.hasToolCalls()) {
+							lastGraphResponse = GraphResponse
+								.of(new StreamingOutput<>(message.getToolCalls().toString(), response, context.getCurrentNodeId(), context.getOverallState()));
+						} else {
+							lastGraphResponse =
+									GraphResponse
+											.of(new StreamingOutput(message.getText(), context.getCurrentNodeId(), context.getOverallState()));
+						}
 						lastChatResponseRef.set(response);
 						lastGraphResponseRef.set(lastGraphResponse);
 						return lastGraphResponse;
@@ -206,7 +214,7 @@ public class NodeExecutor extends BaseGraphExecutor {
 
 					if (currentMessage.hasToolCalls()) {
 						GraphResponse<NodeOutput> lastGraphResponse = GraphResponse
-							.of(new StreamingOutput(response, context.getCurrentNodeId(), context.getOverallState()));
+							.of(new StreamingOutput<>(currentMessage.getToolCalls().toString(), response, context.getCurrentNodeId(), context.getOverallState()));
 						lastGraphResponseRef.set(lastGraphResponse);
 						return lastGraphResponse;
 					}
@@ -332,8 +340,9 @@ public class NodeExecutor extends BaseGraphExecutor {
 				Command nextCommand = context.nextNodeId(context.getCurrentNodeId(), context.getCurrentStateData());
 				context.setNextNodeId(nextCommand.gotoNode());
 
-				// save checkpoint after embedded flux completes
 				context.buildCurrentNodeOutput();
+
+				context.doListeners(NODE_AFTER, null);
 			}
 			catch (Exception e) {
 				throw new RuntimeException(e);
@@ -432,8 +441,9 @@ public class NodeExecutor extends BaseGraphExecutor {
 				Command nextCommand = context.nextNodeId(context.getCurrentNodeId(), context.getCurrentStateData());
 				context.setNextNodeId(nextCommand.gotoNode());
 
-				// Save checkpoint after GraphFlux completes
 				context.buildCurrentNodeOutput();
+
+				context.doListeners(NODE_AFTER, null);
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}
@@ -516,8 +526,9 @@ public class NodeExecutor extends BaseGraphExecutor {
 				Command nextCommand = context.nextNodeId(context.getCurrentNodeId(), context.getCurrentStateData());
 				context.setNextNodeId(nextCommand.gotoNode());
 
-				// Save checkpoint after ParallelGraphFlux completes
 				context.buildCurrentNodeOutput();
+
+				context.doListeners(NODE_AFTER, null);
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}
