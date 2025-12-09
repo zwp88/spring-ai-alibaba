@@ -15,10 +15,11 @@
  */
 package com.alibaba.cloud.ai.graph;
 
+import com.alibaba.cloud.ai.graph.action.InterruptionMetadata;
 import com.alibaba.cloud.ai.graph.internal.node.ParallelNode;
 import com.alibaba.cloud.ai.graph.store.Store;
 
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,6 +40,8 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 	public static final String HUMAN_FEEDBACK_METADATA_KEY = "HUMAN_FEEDBACK";
 	public static final String STATE_UPDATE_METADATA_KEY = "STATE_UPDATE";
+	public static final String AGENT_NAME = "AGENT_NAME";
+	public static final String DEFAULT_PARALLEL_EXECUTOR_KEY = "_DEFAULT_PARALLEL_EXECUTOR_";
 
 	private final String threadId;
 
@@ -48,11 +51,34 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 	private final CompiledGraph.StreamMode streamMode;
 
+	// Metadata is immutable during execution, it is used for environment information provided for a specific run.
 	private final Map<String, Object> metadata;
+
+	/**
+	 * Comparing to metadata, context is mutable during execution. It passes information between nodes.
+	 * Different from OverAllState, context is specific to a run, it will not be persisted.
+	 */
+	private final Map<String, Object> context;
 
 	private Store store;
 
 	private final Map<String, Object> interruptedNodes;
+
+	/**
+	 * Creates a new instance of {@code RunnableConfig} as a copy of the provided
+	 * {@code config}.
+	 * @param builder The configuration builder.
+	 */
+	private RunnableConfig(Builder builder) {
+		this.threadId = builder.threadId;
+		this.checkPointId = builder.checkPointId;
+		this.nextNode = builder.nextNode;
+		this.streamMode = builder.streamMode;
+		this.metadata = ofNullable(builder.metadata()).map(HashMap::new).orElse(null);
+		this.interruptedNodes = new ConcurrentHashMap<>();
+		this.store = builder.store;
+		this.context = builder.context;
+	}
 
 	public Store store() {
 		return this.store;
@@ -180,7 +206,11 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 	// FIXME, allow modification or not?
 	@Override
 	public Optional<Map<String, Object>> metadata() {
-		return Optional.of(Collections.unmodifiableMap(metadata));
+		return Optional.of(metadata);
+	}
+
+	public Map<String, Object> context() {
+		return context;
 	}
 
 	/**
@@ -194,6 +224,13 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 			return Optional.empty();
 		}
 		return ofNullable(metadata).map(m -> m.get(key));
+	}
+
+
+	@Override
+	public String toString() {
+		return format("RunnableConfig{ threadId=%s, checkPointId=%s, nextNode=%s, streamMode=%s }", threadId,
+				checkPointId, nextNode, streamMode);
 	}
 
 	/**
@@ -228,6 +265,8 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 
 		private Store store;
 
+		private Map<String, Object> context;
+
 		private CompiledGraph.StreamMode streamMode = CompiledGraph.StreamMode.VALUES;
 
 		/**
@@ -236,6 +275,7 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 		 * purposes.
 		 */
 		Builder() {
+			this.context = new ConcurrentHashMap<>();
 		}
 
 		/**
@@ -250,6 +290,7 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 			this.nextNode = config.nextNode;
 			this.streamMode = config.streamMode;
 			this.store = config.store;
+			this.context = new ConcurrentHashMap<>(config.context);
 		}
 
 		/**
@@ -294,7 +335,7 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 			return this;
 		}
 
-		public Builder addHumanFeedback(Map<String, Object> humanFeedback) {
+		public Builder addHumanFeedback(InterruptionMetadata humanFeedback) {
 			return addMetadata(HUMAN_FEEDBACK_METADATA_KEY, humanFeedback);
 		}
 
@@ -317,8 +358,26 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 			return addMetadata(ParallelNode.formatNodeId(nodeId), requireNonNull(executor, "executor cannot be null!"));
 		}
 
-		public void store(Store store) {
+		/**
+		 * Sets a default {@link Executor} for all parallel nodes.
+		 * <p>
+		 * This executor will be used for parallel nodes that don't have a specific executor
+		 * configured via {@link #addParallelNodeExecutor(String, Executor)}.
+		 * @param executor the {@link Executor} to use as the default for parallel nodes.
+		 * @return this {@code Builder} instance for method chaining.
+		 */
+		public Builder defaultParallelExecutor(Executor executor) {
+			return addMetadata(DEFAULT_PARALLEL_EXECUTOR_KEY, requireNonNull(executor, "executor cannot be null!"));
+		}
+
+		public Builder clearContext() {
+			this.context.clear();
+			return this;
+		}
+
+		public Builder store(Store store) {
 			this.store = store;
+			return this;
 		}
 
 		/**
@@ -329,27 +388,6 @@ public final class RunnableConfig implements HasMetadata<RunnableConfig.Builder>
 			return new RunnableConfig(this);
 		}
 
-	}
-
-	/**
-	 * Creates a new instance of {@code RunnableConfig} as a copy of the provided
-	 * {@code config}.
-	 * @param builder The configuration builder.
-	 */
-	private RunnableConfig(Builder builder) {
-		this.threadId = builder.threadId;
-		this.checkPointId = builder.checkPointId;
-		this.nextNode = builder.nextNode;
-		this.streamMode = builder.streamMode;
-		this.metadata = ofNullable(builder.metadata()).map(Map::copyOf).orElse(null);
-		this.interruptedNodes = new ConcurrentHashMap<>();
-		this.store = builder.store;
-	}
-
-	@Override
-	public String toString() {
-		return format("RunnableConfig{ threadId=%s, checkPointId=%s, nextNode=%s, streamMode=%s }", threadId,
-				checkPointId, nextNode, streamMode);
 	}
 
 }

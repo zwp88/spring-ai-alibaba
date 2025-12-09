@@ -16,7 +16,6 @@
 package com.alibaba.cloud.ai.graph.agent;
 
 import com.alibaba.cloud.ai.graph.KeyStrategy;
-import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.graph.internal.node.Node;
 
 import java.lang.reflect.Type;
@@ -39,7 +38,7 @@ public abstract class BaseAgent extends Agent {
 	protected boolean returnReasoningContents;
 
 	public BaseAgent(String name, String description, boolean includeContents, boolean returnReasoningContents, String outputKey,
-			KeyStrategy outputKeyStrategy) throws GraphStateException {
+			KeyStrategy outputKeyStrategy) {
 		super(name, description);
 		this.includeContents = includeContents;
 		this.returnReasoningContents = returnReasoningContents;
@@ -47,7 +46,7 @@ public abstract class BaseAgent extends Agent {
 		this.outputKeyStrategy = outputKeyStrategy;
 	}
 
-	public abstract Node asNode(boolean includeContents, boolean returnReasoningContents, String outputKeyToParent);
+	public abstract Node asNode(boolean includeContents, boolean returnReasoningContents);
 
 	public boolean isIncludeContents() {
 		return includeContents;

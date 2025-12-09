@@ -42,7 +42,7 @@ public class CompileConfig {
 	// Configuration Fields
 	// ================================================================================================================
 
-	private SaverConfig saverConfig = new SaverConfig().register(new MemorySaver());
+	private SaverConfig saverConfig = new SaverConfig().register(MemorySaver.builder().build());
 	private boolean releaseThread = false;
 	private Store store;
 
@@ -54,7 +54,7 @@ public class CompileConfig {
 	private Set<String> interruptsAfter = Set.of();
 	private boolean interruptBeforeEdge = false;
 
-	private int recursionLimit = 25;
+	private int recursionLimit = 100;
 
 	// ================================================================================================================
 	// Getter Methods

@@ -27,7 +27,6 @@ import com.alibaba.cloud.ai.agent.nacos.vo.PromptVO;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
 import com.alibaba.cloud.ai.graph.agent.node.AgentLlmNode;
 import com.alibaba.cloud.ai.graph.agent.node.AgentToolNode;
-import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 import com.alibaba.cloud.ai.observation.model.ObservationMetadataAwareOptions;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.nacos.api.config.listener.AbstractListener;
@@ -44,6 +43,7 @@ import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.execution.DefaultToolExecutionExceptionProcessor;
 
 import static com.alibaba.cloud.ai.agent.nacos.NacosAgentPromptBuilder.getMetadata;
 import static com.alibaba.cloud.ai.agent.nacos.NacosMcpToolsInjector.convert;
@@ -61,7 +61,7 @@ public class NacosReactAgentBuilder extends NacosAgentPromptBuilder {
 	}
 
 	@Override
-	public ReactAgent build() throws GraphStateException {
+	public ReactAgent build() {
 		if (this.name == null) {
 			this.name = nacosOptions.getAgentName();
 		}
@@ -92,7 +92,7 @@ public class NacosReactAgentBuilder extends NacosAgentPromptBuilder {
 		}
 		else {
 			clientBuilder = ChatClient.builder(model, observationConfiguration.getObservationRegistry() == null ? ObservationRegistry.NOOP : observationConfiguration.getObservationRegistry(), nacosOptions.getObservationConfiguration()
-					.getChatClientObservationConvention());
+					.getChatClientObservationConvention(), this.advisorObservationConvention);
 		}
 
 		clientBuilder.defaultOptions(chatOptions);
@@ -115,15 +115,23 @@ public class NacosReactAgentBuilder extends NacosAgentPromptBuilder {
 		}
 		AgentLlmNode llmNode = llmNodeBuilder.build();
 
-		AgentToolNode toolNode = null;
+		AgentToolNode.Builder builder = AgentToolNode.builder();
+		if (toolExecutionExceptionProcessor != null) {
+			builder.toolExecutionExceptionProcessor(toolExecutionExceptionProcessor);
+		} else {
+			builder.toolExecutionExceptionProcessor(DefaultToolExecutionExceptionProcessor.builder()
+					.alwaysThrow(false)
+					.build());
+		}
+		AgentToolNode toolNode;
 		if (resolver != null) {
-			toolNode = AgentToolNode.builder().toolCallbackResolver(resolver).build();
+			toolNode = builder.toolCallbackResolver(resolver).build();
 		}
 		else if (tools != null) {
-			toolNode = AgentToolNode.builder().toolCallbacks(tools).build();
+			toolNode = builder.toolCallbacks(tools).build();
 		}
 		else {
-			toolNode = AgentToolNode.builder().build();
+			toolNode = builder.build();
 		}
 
 		// register listeners.

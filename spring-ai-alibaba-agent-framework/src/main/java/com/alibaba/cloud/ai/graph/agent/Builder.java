@@ -16,29 +16,38 @@
 package com.alibaba.cloud.ai.graph.agent;
 
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
-import java.util.function.Function;
+import java.util.Map;
+import java.util.concurrent.Executor;
 
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.KeyStrategy;
-import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.agent.hook.Hook;
 import com.alibaba.cloud.ai.graph.agent.interceptor.Interceptor;
 import com.alibaba.cloud.ai.graph.agent.interceptor.ModelInterceptor;
 import com.alibaba.cloud.ai.graph.agent.interceptor.ToolInterceptor;
 import com.alibaba.cloud.ai.graph.checkpoint.BaseCheckpointSaver;
 import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
-import com.alibaba.cloud.ai.graph.exception.GraphStateException;
 
+import com.alibaba.cloud.ai.graph.serializer.StateSerializer;
+import com.alibaba.cloud.ai.graph.serializer.std.SpringAIStateSerializer;
 import io.micrometer.observation.ObservationRegistry;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.observation.AdvisorObservationConvention;
 import org.springframework.ai.chat.client.observation.ChatClientObservationConvention;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.tool.execution.ToolExecutionExceptionProcessor;
 import org.springframework.ai.tool.resolution.ToolCallbackResolver;
+
+import org.springframework.util.Assert;
 
 public abstract class Builder {
 
@@ -56,22 +65,28 @@ public abstract class Builder {
 
 	protected ChatClient chatClient;
 
-	protected List<ToolCallback> tools;
+	protected List<ToolCallback> tools = new ArrayList<>();
+
+	protected List<ToolCallbackProvider> toolCallbackProviders = new ArrayList<>();
+
+	protected List<String> toolNames = new ArrayList<>();
 
 	protected ToolCallbackResolver resolver;
 
-	protected int maxIterations = 10;
+	protected ToolExecutionExceptionProcessor toolExecutionExceptionProcessor;
+
+	protected Map<String, Object> toolContext = new HashMap<>();
 
 	protected boolean releaseThread;
 
 	protected BaseCheckpointSaver saver;
 
-	protected Function<OverAllState, Boolean> shouldContinueFunc;
+	protected CompileConfig compileConfig;
 
-	protected List<Hook> hooks;
-	protected List<Interceptor> interceptors;
-	protected List<ModelInterceptor> modelInterceptors;
-	protected List<ToolInterceptor> toolInterceptors;
+	protected List<Hook> hooks = new ArrayList<>();
+	protected List<Interceptor> interceptors = new ArrayList<>();
+	protected List<ModelInterceptor> modelInterceptors = new ArrayList<>();
+	protected List<ToolInterceptor> toolInterceptors = new ArrayList<>();
 
 	protected boolean includeContents = true;
 	protected boolean returnReasoningContents;
@@ -90,11 +105,20 @@ public abstract class Builder {
 
 	protected ChatClientObservationConvention customObservationConvention;
 
+	protected AdvisorObservationConvention advisorObservationConvention;
+
+	protected boolean enableLogging;
+
+	protected StateSerializer stateSerializer;
+	
+	protected Executor executor;
+
 	public Builder name(String name) {
 		this.name = name;
 		return this;
 	}
 
+	@Deprecated
 	public Builder chatClient(ChatClient chatClient) {
 		this.chatClient = chatClient;
 		return this;
@@ -111,12 +135,37 @@ public abstract class Builder {
 	}
 
 	public Builder tools(List<ToolCallback> tools) {
-		this.tools = tools;
+		Assert.notNull(tools, "tools cannot be null");
+		Assert.noNullElements(tools, "tools cannot contain null elements");
+		this.tools.addAll(tools);
 		return this;
 	}
 
 	public Builder tools(ToolCallback... tools) {
-		this.tools = Arrays.asList(tools);
+		Assert.notNull(tools, "tools cannot be null");
+		Assert.noNullElements(tools, "tools cannot contain null elements");
+		this.tools.addAll(List.of(tools));
+		return this;
+	}
+
+	public Builder methodTools(Object... toolObjects) {
+		Assert.notNull(toolObjects, "toolObjects cannot be null");
+		Assert.noNullElements(toolObjects, "toolObjects cannot contain null elements");
+		this.tools.addAll(Arrays.asList(ToolCallbacks.from(toolObjects)));
+		return this;
+	}
+
+	public Builder toolCallbackProviders(ToolCallbackProvider... toolCallbackProviders) {
+		Assert.notNull(toolCallbackProviders, "toolCallbackProviders cannot be null");
+		Assert.noNullElements(toolCallbackProviders, "toolCallbackProviders cannot contain null elements");
+		this.toolCallbackProviders.addAll(List.of(toolCallbackProviders));
+		return this;
+	}
+
+	public Builder toolNames(String... toolNames) {
+		Assert.notNull(toolNames, "toolNames cannot be null");
+		Assert.noNullElements(toolNames, "toolNames cannot contain null elements");
+		this.toolNames.addAll(List.of(toolNames));
 		return this;
 	}
 
@@ -125,8 +174,16 @@ public abstract class Builder {
 		return this;
 	}
 
-	public Builder maxIterations(int maxIterations) {
-		this.maxIterations = maxIterations;
+	public Builder toolExecutionExceptionProcessor(ToolExecutionExceptionProcessor toolExecutionExceptionProcessor) {
+		this.toolExecutionExceptionProcessor = toolExecutionExceptionProcessor;
+		return this;
+	}
+
+	public Builder toolContext(Map<String, Object> toolContext) {
+		Assert.notNull(toolContext, "toolContext cannot be null");
+		Assert.noNullElements(toolContext.keySet(), "toolContext keys cannot contain null elements");
+		Assert.noNullElements(toolContext.values(), "toolContext values cannot contain null elements");
+		this.toolContext.putAll(toolContext);
 		return this;
 	}
 
@@ -136,12 +193,14 @@ public abstract class Builder {
 	}
 
 	public Builder saver(BaseCheckpointSaver saver) {
+		Assert.notNull(saver, "saver cannot be null");
 		this.saver = saver;
 		return this;
 	}
 
-	public Builder shouldContinueFunction(Function<OverAllState, Boolean> shouldContinueFunc) {
-		this.shouldContinueFunc = shouldContinueFunc;
+	public Builder compileConfig(CompileConfig compileConfig) {
+		Assert.notNull(compileConfig, "compileConfig cannot be null");
+		this.compileConfig = compileConfig;
 		return this;
 	}
 
@@ -200,25 +259,34 @@ public abstract class Builder {
 		return this;
 	}
 
-	public Builder hooks(List<Hook> hooks) {
-		this.hooks = hooks;
+	public Builder hooks(List<? extends Hook> hooks) {
+		Assert.notNull(hooks, "hooks cannot be null");
+		Assert.noNullElements(hooks, "hooks cannot contain null elements");
+		this.hooks.addAll(hooks);
 		return this;
 	}
 
 	public Builder hooks(Hook... hooks) {
-		this.hooks = Arrays.asList(hooks);
+		Assert.notNull(hooks, "hooks cannot be null");
+		Assert.noNullElements(hooks, "hooks cannot contain null elements");
+		this.hooks.addAll(List.of(hooks));
 		return this;
 	}
 
-	public Builder interceptors(List<Interceptor> interceptors) {
-		this.interceptors = interceptors;
+	public Builder interceptors(List<? extends Interceptor> interceptors) {
+		Assert.notNull(interceptors, "interceptors cannot be null");
+		Assert.noNullElements(interceptors, "interceptors cannot contain null elements");
+		this.interceptors.addAll(interceptors);
 		return this;
 	}
 
 	public Builder interceptors(Interceptor... interceptors) {
-		this.interceptors = Arrays.asList(interceptors);
+		Assert.notNull(interceptors, "interceptors cannot be null");
+		Assert.noNullElements(interceptors, "interceptors cannot contain null elements");
+		this.interceptors.addAll(List.of(interceptors));
 		return this;
 	}
+
 
 	public Builder observationRegistry(ObservationRegistry observationRegistry) {
 		this.observationRegistry = observationRegistry;
@@ -230,7 +298,58 @@ public abstract class Builder {
 		return this;
 	}
 
+	public Builder advisorObservationConvention(AdvisorObservationConvention advisorObservationConvention) {
+		this.advisorObservationConvention = advisorObservationConvention;
+		return this;
+	}
+
+	public Builder enableLogging(boolean enableLogging) {
+		this.enableLogging = enableLogging;
+		return this;
+	}
+
+	/**
+	 * Sets the state serializer for the agent.
+	 * @param stateSerializer the state serializer to use
+	 * @return this builder instance
+	 */
+	public Builder stateSerializer(StateSerializer stateSerializer) {
+		this.stateSerializer = stateSerializer;
+		return this;
+	}
+
+	/**
+	 * Sets the state serializer for the agent.
+	 * @param stateSerializer the SpringAI state serializer to use
+	 * @return this builder instance
+	 * @deprecated Use {@link #stateSerializer(StateSerializer)} instead
+	 */
+	@Deprecated
+	public Builder stateSerializer(SpringAIStateSerializer stateSerializer) {
+		this.stateSerializer = stateSerializer;
+		return this;
+	}
+
+	/**
+	 * Sets the executor for parallel nodes.
+	 * <p>
+	 * This executor will be used for all parallel nodes in the agent's execution graph.
+	 * When a parallel node is executed, it will use this executor to run the parallel
+	 * branches concurrently.
+	 * @param executor the {@link Executor} to use for parallel nodes
+	 * @return this builder instance
+	 */
+	public Builder executor(Executor executor) {
+		Assert.notNull(executor, "executor cannot be null");
+		this.executor = executor;
+		return this;
+	}
+
 	protected CompileConfig buildConfig() {
+		if (compileConfig != null) {
+			return compileConfig;
+		}
+
 		SaverConfig saverConfig = SaverConfig.builder()
 				.register(saver)
 				.build();
@@ -241,6 +360,6 @@ public abstract class Builder {
 				.build();
 	}
 
-	public abstract ReactAgent build() throws GraphStateException;
+	public abstract ReactAgent build();
 
 }

@@ -93,12 +93,12 @@ public class StateGraph {
 	/**
 	 * Factory for providing key strategies.
 	 */
-	private KeyStrategyFactory keyStrategyFactory;
+	private final KeyStrategyFactory keyStrategyFactory;
 
 	/**
 	 * Name of the graph.
 	 */
-	private String name;
+	private final String name;
 
 	/**
 	 * Serializer for the state.
@@ -106,26 +106,9 @@ public class StateGraph {
 	private final StateSerializer stateSerializer;
 
 	/**
-	 * Jackson-based serializer for state.
+	 * Default Jackson serializer instance.
 	 */
-	static class JacksonSerializer extends SpringAIJacksonStateSerializer {
-
-		/**
-		 * Instantiates a new Jackson serializer.
-		 */
-		public JacksonSerializer() {
-			super(OverAllState::new);
-		}
-
-		/**
-		 * Gets object mapper.
-		 * @return the object mapper
-		 */
-		ObjectMapper getObjectMapper() {
-			return objectMapper;
-		}
-
-	}
+	public static final StateSerializer DEFAULT_JACKSON_SERIALIZER = new SpringAIJacksonStateSerializer(OverAllState::new, new ObjectMapper());
 
 	/**
 	 * Constructs a StateGraph with the specified name, key strategy factory, and state
@@ -133,16 +116,22 @@ public class StateGraph {
 	 * @param name the name of the graph
 	 * @param keyStrategyFactory the factory for providing key strategies
 	 * @param stateSerializer the plain text state serializer to use
+	 * @deprecated Use {@link #StateGraph(String, KeyStrategyFactory, StateSerializer)} instead
 	 */
+	@Deprecated
 	public StateGraph(String name, KeyStrategyFactory keyStrategyFactory, PlainTextStateSerializer stateSerializer) {
-		this.name = name;
-		this.keyStrategyFactory = keyStrategyFactory;
-		this.stateSerializer = stateSerializer;
+		this(name, keyStrategyFactory, (StateSerializer) stateSerializer);
 	}
 
+	/**
+	 * Constructs a StateGraph with the specified key strategy factory and plain text state serializer.
+	 * @param keyStrategyFactory the factory for providing key strategies
+	 * @param stateSerializer the plain text state serializer to use
+	 * @deprecated Use {@link #StateGraph(KeyStrategyFactory, StateSerializer)} instead
+	 */
+	@Deprecated
 	public StateGraph(KeyStrategyFactory keyStrategyFactory, PlainTextStateSerializer stateSerializer) {
-		this.keyStrategyFactory = keyStrategyFactory;
-		this.stateSerializer = stateSerializer;
+		this(keyStrategyFactory, (StateSerializer) stateSerializer);
 	}
 
 	/**
@@ -151,11 +140,11 @@ public class StateGraph {
 	 * @param name the name of the graph
 	 * @param keyStrategyFactory the factory for providing key strategies
 	 * @param stateSerializer the SpringAI state serializer to use
+	 * @deprecated Use {@link #StateGraph(String, KeyStrategyFactory, StateSerializer)} instead
 	 */
+	@Deprecated
 	public StateGraph(String name, KeyStrategyFactory keyStrategyFactory, SpringAIStateSerializer stateSerializer) {
-		this.name = name;
-		this.keyStrategyFactory = keyStrategyFactory;
-		this.stateSerializer = stateSerializer;
+		this(name, keyStrategyFactory, (StateSerializer) stateSerializer);
 	}
 
 	/**
@@ -163,34 +152,52 @@ public class StateGraph {
 	 * serializer.
 	 * @param keyStrategyFactory the factory for providing key strategies
 	 * @param stateSerializer the SpringAI state serializer to use
+	 * @deprecated Use {@link #StateGraph(KeyStrategyFactory, StateSerializer)} instead
 	 */
+	@Deprecated
 	public StateGraph(KeyStrategyFactory keyStrategyFactory, SpringAIStateSerializer stateSerializer) {
-		this.keyStrategyFactory = keyStrategyFactory;
-		this.stateSerializer = stateSerializer;
+		this(keyStrategyFactory, (StateSerializer) stateSerializer);
 	}
 
 	public StateGraph(String name, KeyStrategyFactory keyStrategyFactory) {
-		this.name = name;
-		this.keyStrategyFactory = keyStrategyFactory;
-		this.stateSerializer = new JacksonSerializer();
+		this(name, keyStrategyFactory, DEFAULT_JACKSON_SERIALIZER);
 	}
-
 	/**
 	 * Constructs a StateGraph with the provided key strategy factory.
 	 * @param keyStrategyFactory the factory for providing key strategies
 	 */
 	public StateGraph(KeyStrategyFactory keyStrategyFactory) {
-		this.keyStrategyFactory = keyStrategyFactory;
-		this.stateSerializer = new JacksonSerializer();
+		this(null, keyStrategyFactory, DEFAULT_JACKSON_SERIALIZER);
 	}
 
 	/**
-	 * Default constructor that initializes a StateGraph with a Gson-based state
+	 * Default constructor that initializes a StateGraph with a Jackson-based state
 	 * serializer.
 	 */
 	public StateGraph() {
-		this.stateSerializer = new JacksonSerializer();
-		this.keyStrategyFactory = HashMap::new;
+		this(null, HashMap::new, DEFAULT_JACKSON_SERIALIZER);
+	}
+
+	/**
+	 * Constructs a StateGraph with the specified key strategy factory and state serializer.
+	 * @param keyStrategyFactory the factory for providing key strategies
+	 * @param stateSerializer the state serializer to use
+	 */
+	public StateGraph(KeyStrategyFactory keyStrategyFactory, StateSerializer stateSerializer) {
+		this(null, keyStrategyFactory, Objects.requireNonNull(stateSerializer, "stateSerializer cannot be null"));
+	}
+
+	/**
+	 * Constructs a StateGraph with the specified name, key strategy factory, and state
+	 * serializer.
+	 * @param name the name of the graph
+	 * @param keyStrategyFactory the factory for providing key strategies
+	 * @param stateSerializer the state serializer to use
+	 */
+	public StateGraph(String name, KeyStrategyFactory keyStrategyFactory, StateSerializer stateSerializer) {
+		this.name = name;
+		this.keyStrategyFactory = keyStrategyFactory;
+		this.stateSerializer = Objects.requireNonNull(stateSerializer, "stateSerializer cannot be null");
 	}
 
 	/**
@@ -263,7 +270,7 @@ public class StateGraph {
 			throw Errors.invalidNodeIdentifier.exception(END);
 		}
 		if (!Objects.equals(node.id(), id)) {
-			throw Errors.invalidNodeIdentifier.exception(node.id(), id);
+			throw Errors.nodeIdNotMatchError.exception(node.id(), id);
 		}
 
 		if (nodes.elements.contains(node)) {

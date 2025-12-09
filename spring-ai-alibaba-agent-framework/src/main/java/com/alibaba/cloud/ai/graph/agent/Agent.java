@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Executor;
 
 import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
@@ -62,12 +63,14 @@ public abstract class Agent {
 
 	protected volatile StateGraph graph;
 
+	protected Executor executor;
+
 	/**
 	 * Protected constructor for initializing all base agent properties.
 	 * @param name the unique name of the agent
 	 * @param description the description of the agent's capability
 	 */
-	protected Agent(String name, String description) throws GraphStateException {
+	protected Agent(String name, String description) {
 		this.name = name;
 		this.description = description;
 	}
@@ -221,7 +224,7 @@ public abstract class Agent {
 
 	public Flux<NodeOutput> stream(String message) throws GraphRunnerException {
 		Map<String, Object> inputs = buildMessageInput(message);
-		return doStream(inputs);
+		return doStream(inputs, buildStreamConfig(null));
 	}
 
 	public Flux<NodeOutput> stream(String message, RunnableConfig config) throws GraphRunnerException {
@@ -231,7 +234,7 @@ public abstract class Agent {
 
 	public Flux<NodeOutput> stream(UserMessage message) throws GraphRunnerException {
 		Map<String, Object> inputs = buildMessageInput(message);
-		return doStream(inputs);
+		return doStream(inputs, buildStreamConfig(null));
 	}
 
 	public Flux<NodeOutput> stream(UserMessage message, RunnableConfig config) throws GraphRunnerException {
@@ -241,7 +244,7 @@ public abstract class Agent {
 
 	public Flux<NodeOutput> stream(List<Message> messages) throws GraphRunnerException {
 		Map<String, Object> inputs = buildMessageInput(messages);
-		return doStream(inputs);
+		return doStream(inputs, buildStreamConfig(null));
 	}
 
 	public Flux<NodeOutput> stream(List<Message> messages, RunnableConfig config) throws GraphRunnerException {
@@ -259,21 +262,42 @@ public abstract class Agent {
 		return compiledGraph.invokeAndGetOutput(input, buildNonStreamConfig(runnableConfig));
 	}
 
-	protected RunnableConfig buildNonStreamConfig(RunnableConfig config) {
-		if (config == null) {
-			return RunnableConfig.builder().addMetadata("_stream_", false).build();
-		}
-		return RunnableConfig.builder(config).addMetadata("_stream_", false).build();
-	}
-
-	protected Flux<NodeOutput> doStream(Map<String, Object> input) {
-		CompiledGraph compiledGraph = getAndCompileGraph();
-		return compiledGraph.stream(input);
-	}
-
 	protected Flux<NodeOutput> doStream(Map<String, Object> input, RunnableConfig runnableConfig) {
 		CompiledGraph compiledGraph = getAndCompileGraph();
-		return compiledGraph.stream(input, runnableConfig);
+		return compiledGraph.stream(input, buildStreamConfig(runnableConfig));
+	}
+
+	protected RunnableConfig buildNonStreamConfig(RunnableConfig config) {
+		RunnableConfig.Builder builder = config == null 
+			? RunnableConfig.builder() 
+			: RunnableConfig.builder(config);
+		
+		builder.addMetadata("_stream_", false).addMetadata("_AGENT_", name);
+		applyExecutorConfig(builder);
+		
+		return builder.build();
+	}
+
+	protected RunnableConfig buildStreamConfig(RunnableConfig config) {
+		RunnableConfig.Builder builder = config == null 
+			? RunnableConfig.builder() 
+			: RunnableConfig.builder(config);
+		
+		builder.addMetadata("_AGENT_", name);
+		applyExecutorConfig(builder);
+		
+		return builder.build();
+	}
+
+	/**
+	 * Applies executor configuration to the RunnableConfig builder.
+	 * This method sets the default executor for parallel nodes from the agent's configuration.
+	 * @param builder the RunnableConfig builder to apply executor configuration to
+	 */
+	protected void applyExecutorConfig(RunnableConfig.Builder builder) {
+		if (executor != null) {
+			builder.defaultParallelExecutor(executor);
+		}
 	}
 
 	protected Map<String, Object> buildMessageInput(Object message) {

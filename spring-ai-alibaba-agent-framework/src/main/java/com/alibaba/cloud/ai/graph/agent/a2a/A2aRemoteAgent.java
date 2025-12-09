@@ -45,7 +45,7 @@ public class A2aRemoteAgent extends BaseAgent {
 	private boolean shareState;
 
 	// Private constructor for Builder pattern
-	private A2aRemoteAgent(Builder builder) throws GraphStateException {
+	private A2aRemoteAgent(Builder builder) {
 		super(builder.name, builder.description, builder.includeContents, builder.returnReasoningContents, builder.outputKey, builder.outputKeyStrategy);
 		this.agentCard = builder.agentCard;
 		this.keyStrategyFactory = builder.keyStrategyFactory;
@@ -67,14 +67,14 @@ public class A2aRemoteAgent extends BaseAgent {
 		}
 
 		StateGraph graph = new StateGraph(name, this.keyStrategyFactory);
-		graph.addNode("A2aNode", AsyncNodeActionWithConfig.node_async(new A2aNodeActionWithConfig(agentCard, includeContents, outputKey, instruction, streaming)));
+		graph.addNode("A2aNode", AsyncNodeActionWithConfig.node_async(new A2aNodeActionWithConfig(agentCard, name, includeContents, outputKey, instruction, streaming)));
 		graph.addEdge(StateGraph.START, "A2aNode");
 		graph.addEdge("A2aNode", StateGraph.END);
 		return graph;
 	}
 
 	@Override
-	public ScheduledAgentTask schedule(ScheduleConfig scheduleConfig) throws GraphStateException {
+	public ScheduledAgentTask schedule(ScheduleConfig scheduleConfig) {
 		throw new UnsupportedOperationException("A2aRemoteAgent has not support schedule.");
 	}
 
@@ -83,8 +83,8 @@ public class A2aRemoteAgent extends BaseAgent {
 	}
 
 	@Override
-	public Node asNode(boolean includeContents, boolean returnReasoningContents, String outputKeyToParent) {
-		return new A2aRemoteAgentNode(this.name, includeContents, returnReasoningContents, outputKeyToParent, this.instruction, this.agentCard, this.streaming, this.shareState, this.getAndCompileGraph());
+	public Node asNode(boolean includeContents, boolean returnReasoningContents) {
+		return new A2aRemoteAgentNode(this.name, includeContents, returnReasoningContents, this.instruction, this.agentCard, this.streaming, this.shareState, this.getAndCompileGraph());
 	}
 
 	/**
@@ -92,13 +92,13 @@ public class A2aRemoteAgent extends BaseAgent {
 	 * Similar to AgentSubGraphNode but uses A2aNodeActionWithConfig internally.
 	 * Implements SubGraphNode interface to provide subgraph functionality.
 	 */
-	private static class A2aRemoteAgentNode extends Node implements SubGraphNode {
+	private class A2aRemoteAgentNode extends Node implements SubGraphNode {
 
 		private final CompiledGraph subGraph;
 
-		public A2aRemoteAgentNode(String id, boolean includeContents, boolean returnReasoningContents, String outputKeyToParent, String instruction, AgentCardWrapper agentCard, boolean streaming, boolean shareState, CompiledGraph subGraph) {
+		public A2aRemoteAgentNode(String id, boolean includeContents, boolean returnReasoningContents, String instruction, AgentCardWrapper agentCard, boolean streaming, boolean shareState, CompiledGraph subGraph) {
 			super(Objects.requireNonNull(id, "id cannot be null"),
-					(config) -> AsyncNodeActionWithConfig.node_async(new A2aNodeActionWithConfig(agentCard, includeContents, outputKeyToParent, instruction, streaming, shareState, config)));
+					(config) -> AsyncNodeActionWithConfig.node_async(new A2aNodeActionWithConfig(agentCard, subGraph.stateGraph.getName(), includeContents, instruction, A2aRemoteAgent.this.outputKey, streaming, shareState, config)));
 			this.subGraph = subGraph;
 		}
 
@@ -203,7 +203,7 @@ public class A2aRemoteAgent extends BaseAgent {
 			return this;
 		}
 
-		public A2aRemoteAgent build() throws GraphStateException {
+		public A2aRemoteAgent build() {
 			// Validation
 			if (name == null || name.trim().isEmpty()) {
 				throw new IllegalArgumentException("Name must be provided");
