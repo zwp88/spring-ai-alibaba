@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 the original author or authors.
+ * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ public class LoopGraphBuildingStrategy implements FlowGraphBuildingStrategy {
         Agent subAgent = config.getSubAgents().get(0);
         graph.addNode(subAgent.name(), subAgent.getGraph());
         graph.addConditionalEdges(loopStrategy.loopDispatchNodeName(), edge_async(
-                (state, runnableConfig) -> {
+                state -> {
                     Boolean value = state.value(loopStrategy.loopFlagKey(), false);
                     return value ? "continue" : "break";
                 }

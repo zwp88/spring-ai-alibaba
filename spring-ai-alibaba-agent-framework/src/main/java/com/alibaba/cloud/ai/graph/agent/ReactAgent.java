@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 the original author or authors.
+ * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -619,7 +619,7 @@ public class ReactAgent extends BaseAgent {
 			List<JumpTo> canJumpTo) throws GraphStateException {
 
 		if (canJumpTo != null && !canJumpTo.isEmpty()) {
-			EdgeAction router = (state, config) -> {
+			EdgeAction router = state -> {
 				Object jumpToValue = state.value("jump_to").orElse(null);
 				JumpTo jumpTo = null;
 				if (jumpToValue != null) {
@@ -700,7 +700,7 @@ public class ReactAgent extends BaseAgent {
 	}
 
 	private EdgeAction makeModelToTools(String modelDestination, String endDestination) {
-		return (state, config) -> {
+		return state -> {
 			List<Message> messages = (List<Message>) state.value("messages").orElse(List.of());
 			if (messages.isEmpty()) {
 				logger.warn("No messages found in state when routing from model to tools");
@@ -751,7 +751,7 @@ public class ReactAgent extends BaseAgent {
 	}
 
 	private EdgeAction makeToolsToModelEdge(String modelDestination, String endDestination) {
-		return (state, config) -> {
+		return state -> {
 			// 1. Extract last AI message and corresponding tool messages
 			ToolResponseMessage toolResponseMessage = fetchLastToolResponseMessage(state);
 			// 2. Exit condition: All executed tools have return_direct=True

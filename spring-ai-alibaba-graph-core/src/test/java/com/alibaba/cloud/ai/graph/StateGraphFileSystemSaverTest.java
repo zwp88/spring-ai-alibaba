@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2025 the original author or authors.
+ * Copyright 2024-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ public class StateGraphFileSystemSaverTest {
 				log.info("agent_1: step: {}", steps);
 				return Map.of("steps", steps, "messages", format("agent_1:step %d", steps));
 			}))
-			.addConditionalEdges("agent_1", edge_async((state, config) -> {
+			.addConditionalEdges("agent_1", edge_async(state -> {
 				int steps = (int) state.data().get("steps");
 				if (steps >= expectedSteps) {
 					return "exit";
@@ -165,7 +165,7 @@ public class StateGraphFileSystemSaverTest {
 				log.info("agent_1: step: {}", steps);
 				return Map.of("steps", steps, "messages", format("agent_1:step %d", steps));
 			}))
-			.addConditionalEdges("agent_1", edge_async((state, config) -> {
+			.addConditionalEdges("agent_1", edge_async(state -> {
 				int steps = (int) state.data().get("steps");
 				if (steps >= expectedSteps) {
 					return "exit";
@@ -264,7 +264,7 @@ public class StateGraphFileSystemSaverTest {
 				log.info("agent_1: step: {}", steps);
 				return Map.of("steps", steps, "messages", format("agent_1:step %d", steps));
 			}))
-			.addConditionalEdges("agent_1", edge_async((state, config) -> {
+			.addConditionalEdges("agent_1", edge_async(state -> {
 				int steps = (int) state.data().get("steps");
 				if (steps >= expectedSteps) {
 					return "exit";
